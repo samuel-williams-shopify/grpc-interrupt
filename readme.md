@@ -11,7 +11,6 @@ This is exactly what happens in the Spanner `execute_partition_update` hang:
 2. Server stops sending data mid-stream
 3. Client blocks in `@enum.next` waiting for next partition result
 4. SIGINT is sent but ignored
-5. Only a timeout (like Semian's 10s) or network failure ends the wait
 
 ## Setup
 
@@ -136,19 +135,27 @@ The loop explicitly retries after interruption, making SIGINT/SIGTERM ineffectiv
 
 ### Why This Exists
 
-According to the code comment, this was added to handle [grpc/grpc#38210](https://github.com/grpc/grpc/issues/38210). The retry loop prevents spurious interruptions from breaking gRPC operations, but it also means legitimate interrupt signals (like SIGINT/SIGTERM) are ignored.
+This retry loop was **introduced** in [grpc/grpc#39409](https://github.com/grpc/grpc/pull/39409) ([commit 69f229e](https://github.com/grpc/grpc/commit/69f229edd1d79ab7a7dfda98e3aef6fd807adcad), merged June 3, 2025) to fix [grpc/grpc#38210](https://github.com/grpc/grpc/issues/38210) - "Kernel.system calls cause server to stop working".
+
+**The Problem it Solved**: Before this fix, spurious signals (like those from `Kernel.system` calls) could inadvertently cancel gRPC operations because the previous implementation used `cancel_call_unblock_func` which would actively cancel the call on any interruption.
+
+**The Trade-off**: The retry loop prevents spurious signals from breaking operations (✓), but it also means legitimate interrupt signals (like SIGINT/SIGTERM) are now ignored (✗), making it impossible to cancel hung operations.
+
+This is working **as designed** - the behavior we're demonstrating is the intentional fix for #38210.
 
 ## Solution
 
 For the Spanner issue, the fix is:
-1. **Don't use Partitioned DML** for single-row updates
-2. Use `execute_update` in a transaction instead
-3. This avoids the multi-partition streaming problem entirely
+1. **Don't use Partitioned DML** for single-row updates.
+2. Use `execute_update` in a transaction instead.
+3. This avoids the multi-partition streaming problem entirely.
 
 ## References
 
 - **Debug-instrumented gRPC**: https://github.com/samuel-williams-shopify/grpc/tree/debug
-- **Original gRPC issue**: https://github.com/grpc/grpc/issues/38210 (why the retry loop exists)
+- **Original issue**: [grpc/grpc#38210](https://github.com/grpc/grpc/issues/38210) - "Kernel.system calls cause server to stop working"
+- **PR that introduced the retry loop**: [grpc/grpc#39409](https://github.com/grpc/grpc/pull/39409) - Added retry loop to fix spurious signals (merged June 3, 2025)
+- **The commit**: [69f229e](https://github.com/grpc/grpc/commit/69f229edd1d79ab7a7dfda98e3aef6fd807adcad) - Shows the actual code changes
 - **gRPC completion queue code**: [`src/ruby/ext/grpc/rb_completion_queue.c`](https://github.com/samuel-williams-shopify/grpc/blob/debug/src/ruby/ext/grpc/rb_completion_queue.c)
 
 ## Timeline
@@ -157,7 +164,40 @@ This test was created to diagnose why a Google Cloud Spanner `execute_partition_
 
 1. **The hang**: Partitioned DML was used for a single-row update (primary key lookup)
 2. **The symptom**: SIGINT didn't interrupt the hanging operation
-3. **The cause**: gRPC's completion queue deliberately ignores interruptions
+3. **The root cause**: gRPC's completion queue deliberately ignores interruptions (by design since June 2025)
 4. **The proof**: This test with debug logging shows the retry behavior
 5. **The fix**: Switch from Partitioned DML to regular transactional DML for single-row operations
+
+### Current Status (as of June 2025)
+
+The retry loop behavior demonstrated in this test is the **current behavior** of gRPC Ruby, introduced in [commit 69f229e](https://github.com/grpc/grpc/commit/69f229edd1d79ab7a7dfda98e3aef6fd807adcad) (June 3, 2025) as an intentional fix for [#38210](https://github.com/grpc/grpc/issues/38210).
+
+**Before June 2025**: SIGINT would cancel calls, but spurious signals could break operations  
+**After June 2025** (current): SIGINT is ignored, preventing spurious signal issues but making hung operations uninterruptible
+
+This is a **design trade-off**: robustness against spurious signals vs. ability to interrupt hung operations. If you're experiencing hangs:
+- Ensure proper deadlines/timeouts are set on all gRPC operations
+- Avoid situations that cause hangs (like using Partitioned DML for single-row operations)
+- Be aware that SIGINT/SIGTERM won't help you escape hung gRPC calls
+
+### Potential Fix
+
+A better solution would be to use `rb_thread_check_ints()` to distinguish between spurious and legitimate interruptions:
+
+```c
+if (next_call.interrupted) {
+  // Check if there's actually a signal pending (SIGINT/SIGTERM)
+  // If rb_thread_check_ints() raises an exception, it means there's a real signal
+  // If it returns normally, the interruption was spurious and we should retry
+  rb_thread_check_ints();
+  // If we get here, interruption was spurious - retry
+}
+```
+
+This would:
+- ✓ Still handle spurious interruptions correctly (check finds nothing, retry)
+- ✓ Allow legitimate signals to actually interrupt (check raises exception, operation terminates)
+- ✓ Provide the best of both worlds
+
+This fix has been applied to the debug branch for testing.
 
