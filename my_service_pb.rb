@@ -15,3 +15,4 @@ module MyService
   HelloReply = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("my_service.HelloReply").msgclass
 end
 
+

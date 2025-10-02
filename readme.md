@@ -41,7 +41,7 @@ The debug branch includes instrumentation in `src/ruby/ext/grpc/rb_completion_qu
 
 **Terminal 1 - Start the server:**
 ```bash
-ruby server_slow_stream.rb
+bundle exec ruby server_slow_stream.rb
 ```
 
 This server will:
@@ -50,50 +50,38 @@ This server will:
 
 **Terminal 2 - Run the test client:**
 ```bash
-ruby test_sigint.rb
+bundle exec ruby ./test_sigint.rb
 ```
 
 ## Expected Output
 
-With the debug-instrumented gRPC gem, you'll see detailed logging that proves the retry behavior:
-
 ```
+> bundle exec ruby ./test_sigint.rb
 Starting gRPC streaming test...
-[2025-10-01 21:53:23 +1300] Starting to iterate stream on #<Thread:0x000000011debafa0 run>...
-[GRPC DEBUG] Loop iteration 1: Resetting interrupted to 0
-[GRPC DEBUG] Loop iteration 1: Calling rb_thread_call_without_gvl (blocking...)
-[GRPC DEBUG] Loop iteration 1: Returned from rb_thread_call_without_gvl, interrupted=0, event.type=2
-[2025-10-01 21:53:23 +1300] Received: Message 1 for Test
-[GRPC DEBUG] Loop iteration 1: Calling rb_thread_call_without_gvl (blocking...)
-
-[2025-10-01 21:53:25 +1300] Sending SIGINT to main thread...
-[2025-10-01 21:53:25 +1300] SIGINT sent!
-[GRPC DEBUG] unblock_func called! Setting interrupted=1 (SIGINT received) ← ✓ Signal received
-[2025-10-01 21:53:25 +1300] SIGINT handler called on #<Thread:0x000000011debafa0 run>! ← ✓ Ruby processes it
-
-🔥 THE SMOKING GUN:
-[GRPC DEBUG] Loop iteration 1: Returned from rb_thread_call_without_gvl, interrupted=1, event.type=1
-[GRPC DEBUG] Loop iteration 1: interrupted=1, RETRYING LOOP (ignoring interruption!) ← ✗ gRPC ignores it!
-[GRPC DEBUG] Loop iteration 2: Resetting interrupted to 0
-[GRPC DEBUG] Loop iteration 2: Calling rb_thread_call_without_gvl (blocking...)
-
-... 28 seconds pass until timeout ...
-
-[2025-10-01 21:53:53 +1300] ❌ DeadlineExceeded: Stream timed out
-[2025-10-01 21:53:53 +1300] SIGINT was received: true
-[2025-10-01 21:53:53 +1300] But the stream continued until timeout!
+[2025-10-03 01:03:19 +1300] Starting to iterate stream on #<Thread:0x000000010503af88 run> (server will hang after 1 message)...
+  0.0s     info: Async::Container::Group [oid=0x298] [ec=0x2a0] [pid=36090] [2025-10-03 01:03:21 +1300]
+               | Sending interrupt to 1 running processes...
+ 10.0s     info: Async::Container::Group [oid=0x298] [ec=0x2a0] [pid=36090] [2025-10-03 01:03:31 +1300]
+               | Sending terminate to 1 running processes...
+20.01s     info: Async::Container::Group [oid=0x298] [ec=0x2a0] [pid=36090] [2025-10-03 01:03:41 +1300]
+               | Sending kill to 1 running processes...
+20.11s    error: Async::Container::Forked [oid=0x2b0] [ec=0x2b8] [pid=36090] [2025-10-03 01:03:41 +1300]
+               | {
+               |   "status": "pid 36091 SIGKILL (signal 9)"
+               | }
 ```
 
 ## Key Observations
 
-1. **SIGINT is delivered** - `unblock_func called! Setting interrupted=1`.
-2. **Ruby signal handler executes** - The `Signal.trap` block runs successfully.
-3. **gRPC sees the interruption** - `interrupted=1` is set.
-4. **🔥 gRPC deliberately retries** - `interrupted=1, RETRYING LOOP (ignoring interruption!)`.
-5. **Loop continues** - `Loop iteration 2: Resetting interrupted to 0`.
-6. **Timeout is the only escape** - 30-second deadline finally ends it.
+1. **Stream starts and receives 1 message** - The test confirms the connection works.
+2. **Server hangs** - After the first message, the server stops responding (simulating the Spanner partition hang).
+3. **SIGINT is sent** - After ~2 seconds, Async::Container sends interrupt signal to the child process.
+4. **🔥 Process ignores SIGINT** - 10 seconds pass with no effect.
+5. **SIGTERM is sent** - After 10 more seconds, a terminate signal is sent.
+6. **Process ignores SIGTERM** - 10 more seconds pass with no effect.
+7. **SIGKILL is required** - Only after 20+ seconds of hanging does SIGKILL finally terminate the process.
 
-This proves that both Ruby and gRPC are working as designed - Ruby delivers the signal, but gRPC's completion queue explicitly ignores interruptions and retries.
+This demonstrates that the gRPC streaming call is completely uninterruptible - neither SIGINT nor SIGTERM can stop it. The process can only be killed with SIGKILL (signal 9).
 
 ## The Root Cause
 
@@ -180,24 +168,27 @@ This is a **design trade-off**: robustness against spurious signals vs. ability 
 - Avoid situations that cause hangs (like using Partitioned DML for single-row operations)
 - Be aware that SIGINT/SIGTERM won't help you escape hung gRPC calls
 
-### Potential Fix
+### The Fix: Yield to Scheduler
 
-A better solution would be to use `rb_thread_check_ints()` to distinguish between spurious and legitimate interruptions:
+The issue occurs when using Async's `Thread.handle_interrupt(:never)` which defers signal processing. When gRPC's retry loop sees `interrupted=1`, it needs to yield control back to Ruby so Async's scheduler can process the deferred interrupt.
 
+**Current workaround in gRPC**:
 ```c
 if (next_call.interrupted) {
-  // Check if there's actually a signal pending (SIGINT/SIGTERM)
-  // If rb_thread_check_ints() raises an exception, it means there's a real signal
-  // If it returns normally, the interruption was spurious and we should retry
-  rb_thread_check_ints();
-  // If we get here, interruption was spurious - retry
+  // Yield to Ruby scheduler by calling sleep(0)
+  // This allows Async to process deferred interrupts from Thread.handle_interrupt
+  VALUE zero = INT2FIX(0);
+  rb_funcall(rb_mKernel, rb_intern("sleep"), 1, zero);
+  // If there was a real signal, sleep(0) raises an exception
+  // If it was spurious, we return here and retry
 }
 ```
 
-This would:
-- ✓ Still handle spurious interruptions correctly (check finds nothing, retry)
-- ✓ Allow legitimate signals to actually interrupt (check raises exception, operation terminates)
-- ✓ Provide the best of both worlds
+This works because `sleep(0)`:
+- ✓ Yields control to the fiber scheduler (Async)
+- ✓ Allows deferred interrupts to be processed
+- ✓ Raises exception if there's a real signal
+- ✓ Returns normally if interruption was spurious
 
-This fix has been applied to the debug branch for testing.
+**Better fix for Ruby itself**: Enhance `rb_thread_check_ints()` to yield to the scheduler when interrupts are pending. This is being addressed in [ruby/ruby#14700](https://github.com/ruby/ruby/pull/14700), which fixes the issue where `Thread.handle_interrupt(::SignalException => :never)` can cause event loops to hang indefinitely when `rb_thread_call_without_gvl` is used in a loop. This would fix the issue for all native extensions, not just gRPC.
 

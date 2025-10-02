@@ -61,33 +61,15 @@ GEM
     google-protobuf (4.32.1)
       bigdecimal
       rake (>= 13)
-    google-protobuf (4.32.1-aarch64-linux-gnu)
-      bigdecimal
-      rake (>= 13)
-    google-protobuf (4.32.1-aarch64-linux-musl)
-      bigdecimal
-      rake (>= 13)
     google-protobuf (4.32.1-arm64-darwin)
-      bigdecimal
-      rake (>= 13)
-    google-protobuf (4.32.1-x86-linux-gnu)
-      bigdecimal
-      rake (>= 13)
-    google-protobuf (4.32.1-x86-linux-musl)
-      bigdecimal
-      rake (>= 13)
-    google-protobuf (4.32.1-x86_64-darwin)
-      bigdecimal
-      rake (>= 13)
-    google-protobuf (4.32.1-x86_64-linux-gnu)
-      bigdecimal
-      rake (>= 13)
-    google-protobuf (4.32.1-x86_64-linux-musl)
       bigdecimal
       rake (>= 13)
     googleapis-common-protos-types (1.21.0)
       google-protobuf (~> 4.26)
-    grpc (1.77.0.dev)
+    grpc (1.75.0)
+      google-protobuf (>= 3.25, < 5.0)
+      googleapis-common-protos-types (~> 1.0)
+    grpc (1.75.0-arm64-darwin)
       google-protobuf (>= 3.25, < 5.0)
       googleapis-common-protos-types (~> 1.0)
     grpc-tools (1.75.0)
@@ -120,21 +102,57 @@ GEM
     traces (0.18.2)
 
 PLATFORMS
-  aarch64-linux-gnu
-  aarch64-linux-musl
-  arm64-darwin
+  arm64-darwin-24
   ruby
-  x86-linux-gnu
-  x86-linux-musl
-  x86_64-darwin
-  x86_64-linux-gnu
-  x86_64-linux-musl
 
 DEPENDENCIES
+  async
+  async-container
   bake
   falcon
-  grpc (= 1.77.0.dev)
+  grpc
   grpc-tools
+
+CHECKSUMS
+  async (2.33.0) sha256=08406fe63cc96206ba7f1407792b7badcf66b89b82b3083694f99ef2ec9bcd5b
+  async-container (0.27.0) sha256=5bc0728a9166cfb3d449e6a0f758a3aa8ac40c83990cac69d1333f585bea6f14
+  async-container-supervisor (0.5.2) sha256=e4b5d0a93b037cc498b17f62f76e0051536f560badd43512320cdb8008c43508
+  async-http (0.91.0) sha256=6b1326ef328d5c2f21e106b1dfee5146f1cddca9b72b71ba39539bc202dbf55f
+  async-http-cache (0.4.5) sha256=0968aea9760ee309c22022e876a443f4a1678c0d1720b7dbba87ceaa78f39d04
+  async-pool (0.11.0) sha256=2228c4a8d1ca59a259b5f9dab7e0f9f23d57856b195aca1c0aa684a7439ea525
+  async-service (0.14.4) sha256=ff7c8cc4305890813673dcb0e5057cedf503f3306d6898cddcbb0b7db801a194
+  bake (0.24.1) sha256=8bfac7e61514b17720e3b13cf6a5e122243f43123c6802707b150904bec5f4c7
+  bigdecimal (3.2.3) sha256=ffd11d1ac67a0d3b2f44aec0a6487210b3f813f363dd11f1fcccf5ba00da4e1b
+  console (1.34.0) sha256=63779906ee8c0818d111e891fd8e2d82759a161558ba1d2cb599ca77b7049901
+  falcon (0.52.3) sha256=dbdc1f3faf44604c5af63d76c0a3d3cbd7e7c8304908085d4c02afb1bc824124
+  fiber-annotation (0.2.0) sha256=7abfadf1d119f508867d4103bf231c0354d019cc39a5738945dec2edadaf6c03
+  fiber-local (1.1.0) sha256=c885f94f210fb9b05737de65d511136ea602e00c5105953748aa0f8793489f06
+  fiber-storage (1.0.1) sha256=f48e5b6d8b0be96dac486332b55cee82240057065dc761c1ea692b2e719240e1
+  google-protobuf (4.32.1) sha256=d9ec3f52a283802055647af5d824dcdfe0a791c6ecbad6a514442f40759015e7
+  google-protobuf (4.32.1-arm64-darwin) sha256=ef2b6c138847f03af94eeed58ee8aaf00263dd66490ec659202c06dc3b2f0c29
+  googleapis-common-protos-types (1.21.0) sha256=c91b6f2b8a2dab6af4e249e7be8e8d5fe174d6e58e065803d740031880179d8f
+  grpc (1.75.0) sha256=e934b6e85d5fdd5992962a5dee9c29b88d6a03ad91def0c6d0492736ed8141d9
+  grpc (1.75.0-arm64-darwin) sha256=27f71e02bf6a0c380fce9cb000a17baeb9f23bd4fef4a39d6e437df96669c4ba
+  grpc-tools (1.75.0) sha256=d567b5ef5124ef1000f806cee3b61eb1335fe4642b5d4bd6ded2eee0f0262931
+  io-endpoint (0.15.2) sha256=1e7e90bb683945288075b43ac505aba11460a281600236b5f8fbc210cf878f25
+  io-event (1.14.0) sha256=e52abe4fa1f48e8b4311aa252c4b1f466716a038d01ff7ae83c72385bb209436
+  io-stream (0.10.0) sha256=55d2cf28f925de4d7bdfa33b4308916b0ac3fbd3ca1af8e2c4ab067dac4f3d65
+  json (2.15.0) sha256=bc24d490a1d81bcbf6b45ee5c02695545d4ed37f679cee879b789a2bbb53ad5c
+  localhost (1.6.0) sha256=d99697c6344283d39d8ae8572c22fcd556c95347a30d361594c36846b112fa17
+  mapping (1.1.3) sha256=2274931d20ecd46eaafdd1e00c58cc7472133b213bcac335cc7733d3c75f4da2
+  memory-leak (0.5.2) sha256=1d3b5fc57af85844f86399f6c543db2d0f698c0e2bca6c1fccf5d46f08bd7e7d
+  metrics (0.15.0) sha256=61ded5bac95118e995b1bc9ed4a5f19bc9814928a312a85b200abbdac9039072
+  openssl (3.3.0) sha256=ff3a573fc97ab30f69483fddc80029f91669bf36532859bd182d1836f45aee79
+  protocol-hpack (1.5.1) sha256=6feca238b8078da1cd295677d6f306c6001af92d75fe0643d33e6956cbc3ad91
+  protocol-http (0.54.0) sha256=e4813c973397b7f5a21797ddc1d5ad054475b414e941f52a3ba9cf7944d12d33
+  protocol-http1 (0.35.1) sha256=24ae3edb220484979a2e90de6b987b6b9c5aab857dbc37b212ece02f51c177ae
+  protocol-http2 (0.23.0) sha256=bb7a782bb24a386cf475bc8cd6190bd28b392fcef943e06c8d8fce06cc3b2ba8
+  protocol-rack (0.16.0) sha256=773e8d40dc1f01f81a0f44d5352727561c8f21b20d6e015fdc275aa944333bbe
+  rack (3.2.1) sha256=30af3f7e5ec21b0d14d822cf24446048dba5f651b617c7e97405b604f20a9e33
+  rake (13.3.0) sha256=96f5092d786ff412c62fde76f793cc0541bd84d2eb579caa529aa8a059934493
+  samovar (2.3.0) sha256=5f75b7955fa68a4decf281608926f3151a59fe16a2e4ae1d18d8e4667b4b2bf4
+  string-format (0.2.0) sha256=bc981c14116b061f12134549f32fa2d61a17b5a35dd6fd36596c21722a789af6
+  traces (0.18.2) sha256=80f1649cb4daace1d7174b81f3b3b7427af0b93047759ba349960cb8f315e214
 
 BUNDLED WITH
    2.6.9
